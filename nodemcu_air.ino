@@ -1,68 +1,105 @@
 #include <ESP8266WiFi.h>
 #include <SPI.h>
 #include <Wire.h>
-#include "MQ135.h"
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
 
-#define RZERO 1
+#include "MQ135.h"
+#include "DHT.h"
  
+#define DHTPin D5        // define the digital I/O pin 
+#define DHTTYPE DHT11 
+#define RZERO 1 
+
+DHT dht11(DHTPin, DHTTYPE);  
+WiFiClient client;
+
 String apiKey = "14K8UL2QEK8BTHN6"; // Enter your Write API key from ThingSpeak
-const char *ssid = "zigor";     // replace with your wifi ssid and wpa2 key
+const char *ssid = "zigor";     
 const char *pass = "zigor725";
+const char *accessPointName = "EspMeteo";
+const char *accessPointPass = "zigor725";
+
+IPAddress local_ip(192,168,4,4);
+IPAddress gateway(192,168,4,1);
+IPAddress subnet(255,255,255,0);
+
+float air_quality_ppm;    
+String relativeAirQuality;
+float temperature;
+float humidity;
  
-WiFiClient client; 
+ESP8266WebServer server(80);
+
+
+String header = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
  
+String html_1 = R"=====(
+<!DOCTYPE html>
+<html>
+ <head>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
+  <meta charset='utf-8'>
+  <style>
+    body {font-size:100%;} 
+    #main {display: table; margin: auto;  padding: 0 10px 0 10px; } 
+    h2 {text-align:center; } 
+    p { text-align:center; }
+  </style>
+  <script>
+   function refresh(refreshPeriod) 
+   {
+      setTimeout("location.reload(true);", refreshPeriod);
+   } 
+   window.onload = refresh(5000);
+  </script>
+  <title>Home meteo station</title>
+ </head>
+ 
+ <body>
+   <div id='main'>
+     <h2>Current condition:</h2>
+     <div id='airQlt'> 
+       <p>Air Quality - %airPpmLevel% (%relativeAirQuality%)</p>
+       <p>Temperature - %temperature%*C</p>
+       <p>Humidity - %humidity%%</p>
+     </div>
+   </div> 
+ </body>
+</html>
+)====="; 
+
 void setup(){
   Serial.begin(115200);
-  delay(10);
+  delay(100);
  
   Serial.println("Connecting to ");
   Serial.println(ssid);
-  WiFi.begin(ssid, pass);
  
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-    Serial.println("");
-    Serial.println("WiFi connected");       
+  Serial.print("Setting soft-AP ... ");
+  Serial.println(WiFi.softAP(accessPointName, accessPointPass) ? "AP initialized" : "AP initialization failed!");
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  WiFi.softAPConfig(local_ip, gateway, subnet);
+  
+  IPAddress myIP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(myIP);
+  //server.on("/", handleRoot);
+  server.on("/", handleUpdate);
+  server.begin();
+  Serial.println("HTTP server started");
+
+  pinMode(DHTPin, INPUT);
+  dht11.begin();
 }
  
  
   void loop(){
-    MQ135 gasSensor = MQ135(A0);
-    float zero = gasSensor.getRZero(); 
-    Serial.print ("rzero: "); 
-    Serial.println (zero); 
-    float air_quality = gasSensor.getPPM();
-    Serial.println(getAirCondition(air_quality));
-    /*  
-    if (client.connect(server, 80)) // "184.106.153.149" or api.thingspeak.com
-  {
-    String postStr = apiKey;
-    postStr += "&field1=";
-    postStr += String(air_quality);
-    postStr += "r\n";
-    
-    client.print("POST /update HTTP/1.1\n");
-    client.print("Host: api.thingspeak.com\n");
-    client.print("Connection: close\n");
-    client.print("X-THINGSPEAKAPIKEY: " + apiKey + "\n");
-    client.print("Content-Type: application/x-www-form-urlencoded\n");
-    client.print("Content-Length: ");
-    client.print(postStr.length());
-    client.print("\n\n");
-    client.print(postStr);
-    
-    Serial.println("Data Send to Thingspeak");
-  }
-    client.stop();*/   
- 
-    delay(2000);      // thingspeak needs minimum 15 sec delay between updates.
+    server.handleClient();
 }
 
-String getAirCondition(int ppm){
-  String airQuality = "Air Quality: ";
+String getAirQualityLevel(int ppm){
+  String airQuality = "";
   if(ppm <= 50){
     airQuality += "GOOD ";
   } else if(ppm <= 100){
@@ -76,9 +113,39 @@ String getAirCondition(int ppm){
   } else {
     airQuality += "Hazardous ";
   }
-  airQuality += "(";
- airQuality += ppm;
- airQuality += " PPM)";
   
   return airQuality;
+}
+
+void handleRoot() {
+  server.send(200, "text/html", html_1);
+}
+
+void handleUpdate(){
+    Serial.println(); 
+    Serial.printf("Stations connected = %d\n", WiFi.softAPgetStationNum()); 
+    MQ135 gasSensor = MQ135(A0);
+    float zero = gasSensor.getRZero(); 
+    Serial.print ("rzero: "); 
+    Serial.println (zero); 
+    
+    air_quality_ppm = gasSensor.getPPM();    
+    relativeAirQuality = getAirQualityLevel(air_quality_ppm); 
+    
+    Serial.println(String(air_quality_ppm) + " - " + relativeAirQuality);    
+    
+    temperature = dht11.readTemperature(); // Gets the values of the temperature
+    humidity = dht11.readHumidity();
+
+    Serial.println(String(temperature) + "*C - " + humidity + "%");
+  
+    //value is passed by an URL argument
+    String tmpString = html_1;
+    tmpString.replace("%airPpmLevel%", String(air_quality_ppm) );
+    tmpString.replace("%relativeAirQuality%", relativeAirQuality );
+    
+    tmpString.replace("%temperature%", String(temperature) );
+    tmpString.replace("%humidity%", String(humidity) );    
+    
+    server.send(200,"text/html", tmpString);     
 }
