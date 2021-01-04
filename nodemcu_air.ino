@@ -9,7 +9,8 @@
  
 #define DHTPin D5        // define the digital I/O pin 
 #define DHTTYPE DHT11 
-#define RZERO 1 
+#define RZERO 1
+#define SEALEVELPRESSURE_HPA (1013.25)
 
 DHT dht11(DHTPin, DHTTYPE);  
 WiFiClient client;
@@ -28,6 +29,8 @@ float air_quality_ppm;
 String relativeAirQuality;
 float temperature;
 float humidity;
+
+float bmeTemperature, bmeHumidity, pressure, altitude;
  
 ESP8266WebServer server(80);
 
@@ -90,7 +93,7 @@ void setup(){
   Serial.println("HTTP server started");
 
   pinMode(DHTPin, INPUT);
-  dht11.begin();
+  dht11.begin(); 
 }
  
  

@@ -1,0 +1,3 @@
+H:/Projects/Arduino/nodemcu_air/cmake-build-debug/CMakeFiles/nodemcu_air.dir
+H:/Projects/Arduino/nodemcu_air/cmake-build-debug/CMakeFiles/edit_cache.dir
+H:/Projects/Arduino/nodemcu_air/cmake-build-debug/CMakeFiles/rebuild_cache.dir
