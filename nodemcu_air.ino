@@ -1,8 +1,11 @@
-#include <ESP8266WiFi.h>
 #include <SPI.h>
 #include <Wire.h>
+
+#include "Arduino.h"
+#include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
 
 #include "MQ135.h"
 #include "DHT.h"
@@ -10,94 +13,80 @@
 #define DHTPin D5        // define the digital I/O pin 
 #define DHTTYPE DHT11 
 #define RZERO 1
-#define SEALEVELPRESSURE_HPA (1013.25)
 
-DHT dht11(DHTPin, DHTTYPE);  
-WiFiClient client;
-
-String apiKey = "14K8UL2QEK8BTHN6"; // Enter your Write API key from ThingSpeak
-const char *ssid = "zigor";     
-const char *pass = "zigor725";
-const char *accessPointName = "EspMeteo";
-const char *accessPointPass = "zigor725";
-
-IPAddress local_ip(192,168,4,4);
-IPAddress gateway(192,168,4,1);
-IPAddress subnet(255,255,255,0);
+const char* ssid = "zigor";     
+const char* pass = "zigor725";
 
 float air_quality_ppm;    
 String relativeAirQuality;
 float temperature;
 float humidity;
 
-float bmeTemperature, bmeHumidity, pressure, altitude;
- 
+DHT dht11(DHTPin, DHTTYPE);  
 ESP8266WebServer server(80);
 
-
-String header = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
+void getHelloWord() {
+    server.send(200, "text/json", "{\"name\": \"Hello world\"}");
+}
  
-String html_1 = R"=====(
-<!DOCTYPE html>
-<html>
- <head>
-  <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
-  <meta charset='utf-8'>
-  <style>
-    body {font-size:100%;} 
-    #main {display: table; margin: auto;  padding: 0 10px 0 10px; } 
-    h2 {text-align:center; } 
-    p { text-align:center; }
-  </style>
-  <script>
-   function refresh(refreshPeriod) 
-   {
-      setTimeout("location.reload(true);", refreshPeriod);
-   } 
-   window.onload = refresh(5000);
-  </script>
-  <title>Home meteo station</title>
- </head>
+// Define routing
+void restServerRouting() {
+    server.on("/", HTTP_GET, []() {
+        server.send(200, F("text/html"),
+            F("Welcome to the REST Web Server"));
+    });
+    server.on(F("/helloWorld"), HTTP_GET, getHelloWord);
+}
  
- <body>
-   <div id='main'>
-     <h2>Current condition:</h2>
-     <div id='airQlt'> 
-       <p>Air Quality - %airPpmLevel% (%relativeAirQuality%)</p>
-       <p>Temperature - %temperature%*C</p>
-       <p>Humidity - %humidity%%</p>
-     </div>
-   </div> 
- </body>
-</html>
-)====="; 
+// Manage not found URL
+void handleNotFound() {
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  for (uint8_t i = 0; i < server.args(); i++) {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+  }
+  server.send(404, "text/plain", message);
+}
 
 void setup(){
-  Serial.begin(115200);
-  delay(100);
+  Serial.begin(115200);  
  
   Serial.println("Connecting to ");
   Serial.println(ssid);
- 
-  Serial.print("Setting soft-AP ... ");
-  Serial.println(WiFi.softAP(accessPointName, accessPointPass) ? "AP initialized" : "AP initialization failed!");
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  WiFi.softAPConfig(local_ip, gateway, subnet);
+
+  WiFi.mode(WIFI_STA);  
+  WiFi.begin(ssid, pass);
+
+  while (WiFi.status() != WL_CONNECTED){
+    delay(1000);
+    Serial.println("Connecting...");
+  }
   
-  IPAddress myIP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(myIP);
-  //server.on("/", handleRoot);
-  server.on("/", handleUpdate);
+  Serial.println(WiFi.localIP());
+
+  if (MDNS.begin("esp8266")) {
+    Serial.println("MDNS responder started");
+  }
+ 
+  // Set server routing
+  restServerRouting();
+  // Set not found response
+  server.onNotFound(handleNotFound);
+  // Start server
   server.begin();
   Serial.println("HTTP server started");
 
   pinMode(DHTPin, INPUT);
-  dht11.begin(); 
-}
+  dht11.begin();   
+} 
  
- 
-  void loop(){
+void loop(){
     server.handleClient();
 }
 
@@ -120,10 +109,6 @@ String getAirQualityLevel(int ppm){
   return airQuality;
 }
 
-void handleRoot() {
-  server.send(200, "text/html", html_1);
-}
-
 void handleUpdate(){
     Serial.println(); 
     Serial.printf("Stations connected = %d\n", WiFi.softAPgetStationNum()); 
@@ -142,13 +127,6 @@ void handleUpdate(){
 
     Serial.println(String(temperature) + "*C - " + humidity + "%");
   
-    //value is passed by an URL argument
-    String tmpString = html_1;
-    tmpString.replace("%airPpmLevel%", String(air_quality_ppm) );
-    tmpString.replace("%relativeAirQuality%", relativeAirQuality );
-    
-    tmpString.replace("%temperature%", String(temperature) );
-    tmpString.replace("%humidity%", String(humidity) );    
-    
-    server.send(200,"text/html", tmpString);     
+    //value is passed by an URL argument   
+       
 }
