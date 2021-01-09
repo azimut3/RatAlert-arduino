@@ -1,6 +1,8 @@
 #include <SPI.h>
 #include <Wire.h>
 
+#include <ArduinoJson.h>
+
 #include "Arduino.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
@@ -17,25 +19,77 @@
 const char* ssid = "zigor";     
 const char* pass = "zigor725";
 
-float air_quality_ppm;    
+class LifeQuality{
+  public: 
+  float airQualityPpm;
+  float temperature;
+  float humidity;
+  LifeQuality(){    
+  } 
+  
+  String toJson(){
+    String jsonString;
+      
+      StaticJsonDocument<200> doc;
+      doc["airQualityPpm"] = airQualityPpm;
+      doc["temperature"] = temperature;
+      doc["humidity"] = humidity;
+
+      serializeJson(doc, jsonString);
+      
+      return jsonString;
+  }
+}; 
+  
 String relativeAirQuality;
-float temperature;
-float humidity;
 
 DHT dht11(DHTPin, DHTTYPE);  
 ESP8266WebServer server(80);
 
-void getHelloWord() {
-    server.send(200, "text/json", "{\"name\": \"Hello world\"}");
+String getAirQualityLevel(int ppm){
+  String airQuality = "";
+  if(ppm <= 50){
+    airQuality += "GOOD ";
+  } else if(ppm <= 100){
+    airQuality += "Moderate ";
+  } else if(ppm <= 150){
+    airQuality += "Unhealthy for SG ";
+  } else if(ppm <= 200){
+    airQuality += "Unhealthy ";
+  }else if(ppm <= 300){
+    airQuality += "Very Unhealthy ";
+  } else {
+    airQuality += "Hazardous ";
+  }
+  
+  return airQuality;
+}
+
+void getLifeQualityData() {
+    MQ135 gasSensor = MQ135(A0);
+    float zero = gasSensor.getRZero(); 
+    Serial.print ("rzero: "); 
+    Serial.println (zero); 
+    LifeQuality qualityObject;
+    
+    qualityObject.airQualityPpm = gasSensor.getPPM();    
+    relativeAirQuality = getAirQualityLevel(qualityObject.airQualityPpm);
+    
+    qualityObject.temperature = dht11.readTemperature(); // Gets the values of the temperature
+    qualityObject.humidity = dht11.readHumidity();
+
+    String requestJson = qualityObject.toJson();
+    Serial.println(requestJson); 
+    server.send(200, "text/json", requestJson);
 }
  
 // Define routing
 void restServerRouting() {
     server.on("/", HTTP_GET, []() {
         server.send(200, F("text/html"),
-            F("Welcome to the REST Web Server"));
+            F("Success"));
     });
-    server.on(F("/helloWorld"), HTTP_GET, getHelloWord);
+    server.on(F("/lifeQuality"), HTTP_GET, getLifeQualityData);
 }
  
 // Manage not found URL
@@ -88,45 +142,4 @@ void setup(){
  
 void loop(){
     server.handleClient();
-}
-
-String getAirQualityLevel(int ppm){
-  String airQuality = "";
-  if(ppm <= 50){
-    airQuality += "GOOD ";
-  } else if(ppm <= 100){
-    airQuality += "Moderate ";
-  } else if(ppm <= 150){
-    airQuality += "Unhealthy for SG ";
-  } else if(ppm <= 200){
-    airQuality += "Unhealthy ";
-  }else if(ppm <= 300){
-    airQuality += "Very Unhealthy ";
-  } else {
-    airQuality += "Hazardous ";
-  }
-  
-  return airQuality;
-}
-
-void handleUpdate(){
-    Serial.println(); 
-    Serial.printf("Stations connected = %d\n", WiFi.softAPgetStationNum()); 
-    MQ135 gasSensor = MQ135(A0);
-    float zero = gasSensor.getRZero(); 
-    Serial.print ("rzero: "); 
-    Serial.println (zero); 
-    
-    air_quality_ppm = gasSensor.getPPM();    
-    relativeAirQuality = getAirQualityLevel(air_quality_ppm); 
-    
-    Serial.println(String(air_quality_ppm) + " - " + relativeAirQuality);    
-    
-    temperature = dht11.readTemperature(); // Gets the values of the temperature
-    humidity = dht11.readHumidity();
-
-    Serial.println(String(temperature) + "*C - " + humidity + "%");
-  
-    //value is passed by an URL argument   
-       
 }
