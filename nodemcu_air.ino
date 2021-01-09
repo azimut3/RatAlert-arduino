@@ -80,7 +80,7 @@ void getLifeQualityData() {
 
     String requestJson = qualityObject.toJson();
     Serial.println(requestJson); 
-    server.send(200, "text/json", requestJson);
+    server.send(200, "application/json", requestJson);
 }
  
 // Define routing
