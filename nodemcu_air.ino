@@ -14,16 +14,18 @@
  
 #define DHTPin D5        // define the digital I/O pin 
 #define DHTTYPE DHT11 
-#define RZERO 1
+#define RZERO 676.139
 
 const char* ssid = "zigor";     
 const char* pass = "zigor725";
+MQ135 gasSensor;
 
 class LifeQuality{
   public: 
   float airQualityPpm;
   float temperature;
   float humidity;
+  float rzero;
   LifeQuality(){    
   } 
   
@@ -34,6 +36,7 @@ class LifeQuality{
       doc["airQualityPpm"] = airQualityPpm;
       doc["temperature"] = temperature;
       doc["humidity"] = humidity;
+      doc["rzero"] = rzero;
 
       serializeJson(doc, jsonString);
       
@@ -66,14 +69,18 @@ String getAirQualityLevel(int ppm){
 }
 
 void getLifeQualityData() {
-    MQ135 gasSensor = MQ135(A0);
+    
     float zero = gasSensor.getRZero(); 
     Serial.print ("rzero: "); 
     Serial.println (zero); 
     LifeQuality qualityObject;
+    //  sensorValue = analogRead(A0);
+    Serial.print("Analog reads: ");
+    Serial.println(analogRead(A0)/1024*3.3);
     
     qualityObject.airQualityPpm = gasSensor.getPPM();    
     relativeAirQuality = getAirQualityLevel(qualityObject.airQualityPpm);
+    qualityObject.rzero = gasSensor.getRZero();
     
     qualityObject.temperature = dht11.readTemperature(); // Gets the values of the temperature
     qualityObject.humidity = dht11.readHumidity();
@@ -138,6 +145,7 @@ void setup(){
 
   pinMode(DHTPin, INPUT);
   dht11.begin();   
+  gasSensor = MQ135(A0);
 } 
  
 void loop(){
