@@ -11,21 +11,25 @@
 
 #include "MQ135.h"
 #include "DHT.h"
- 
+
+static const uint8_t D5 = 14;
 #define DHTPin D5        // define the digital I/O pin 
 #define DHTTYPE DHT11 
-#define RZERO 676.139
+#define RZERO 1
 
-const char* ssid = "zigor";     
-const char* pass = "zigor725";
-MQ135 gasSensor;
+const char* ssid = "zigorGuest";     
+const char* pass = "zigor725Guest";
+
+IPAddress ip(192,168,0,117);
+IPAddress gateway(192,168,0,1);
+IPAddress subnet(255,255,255,0);
 
 class LifeQuality{
   public: 
   float airQualityPpm;
   float temperature;
   float humidity;
-  float rzero;
+  
   LifeQuality(){    
   } 
   
@@ -35,8 +39,7 @@ class LifeQuality{
       StaticJsonDocument<200> doc;
       doc["airQualityPpm"] = airQualityPpm;
       doc["temperature"] = temperature;
-      doc["humidity"] = humidity;
-      doc["rzero"] = rzero;
+      doc["humidity"] = humidity;      
 
       serializeJson(doc, jsonString);
       
@@ -47,7 +50,7 @@ class LifeQuality{
 String relativeAirQuality;
 
 DHT dht11(DHTPin, DHTTYPE);  
-ESP8266WebServer server(80);
+ESP8266WebServer server(82);
 
 String getAirQualityLevel(int ppm){
   String airQuality = "";
@@ -69,18 +72,18 @@ String getAirQualityLevel(int ppm){
 }
 
 void getLifeQualityData() {
-    
-    float zero = gasSensor.getRZero(); 
+    //MQ135 gasSensor = MQ135(A0);
+    //float zero = gasSensor.getRZero(); 
     Serial.print ("rzero: "); 
-    Serial.println (zero); 
+    //Serial.println (zero); 
     LifeQuality qualityObject;
-    //  sensorValue = analogRead(A0);
-    Serial.print("Analog reads: ");
-    Serial.println(analogRead(A0)/1024*3.3);
+    float ppmSensorValue = analogRead(A0);
+    Serial.print ("Analog reads: ");
+    Serial.println (ppmSensorValue);
     
-    qualityObject.airQualityPpm = gasSensor.getPPM();    
-    relativeAirQuality = getAirQualityLevel(qualityObject.airQualityPpm);
-    qualityObject.rzero = gasSensor.getRZero();
+    //qualityObject.airQualityPpm = gasSensor.getPPM();   
+    qualityObject.airQualityPpm = ppmSensorValue;    
+    relativeAirQuality = getAirQualityLevel(qualityObject.airQualityPpm);    
     
     qualityObject.temperature = dht11.readTemperature(); // Gets the values of the temperature
     qualityObject.humidity = dht11.readHumidity();
@@ -121,6 +124,7 @@ void setup(){
   Serial.println("Connecting to ");
   Serial.println(ssid);
 
+  WiFi.config(ip, gateway, subnet);
   WiFi.mode(WIFI_STA);  
   WiFi.begin(ssid, pass);
 
@@ -128,7 +132,9 @@ void setup(){
     delay(1000);
     Serial.println("Connecting...");
   }
-  
+
+  Serial.print("ESP Board MAC Address:  ");
+  Serial.println(WiFi.macAddress());
   Serial.println(WiFi.localIP());
 
   if (MDNS.begin("esp8266")) {
@@ -144,8 +150,7 @@ void setup(){
   Serial.println("HTTP server started");
 
   pinMode(DHTPin, INPUT);
-  dht11.begin();   
-  gasSensor = MQ135(A0);
+  dht11.begin();
 } 
  
 void loop(){
